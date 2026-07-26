@@ -2,6 +2,7 @@
 // api/arduino.php - Proxy to Arduino door controller
 session_start();
 header('Content-Type: application/json');
+require_once '../includes/config.php';
 
 // Authentication check
 if (!isset($_SESSION['user_id'])) {
@@ -10,8 +11,9 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Arduino IP address (change to your Arduino's IP)
-$arduino_ip = '192.168.1.100'; // <<< CONFIGURE THIS
+// Arduino IP address comes from includes/config.php (ARDUINO_IP) so there's
+// a single place to configure it instead of two copies that can drift apart.
+$arduino_ip = ARDUINO_IP;
 
 // Get the endpoint from query string (e.g., ?endpoint=status)
 $endpoint = isset($_GET['endpoint']) ? preg_replace('/[^a-zA-Z0-9_\/]/', '', $_GET['endpoint']) : '';

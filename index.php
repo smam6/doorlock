@@ -22,6 +22,5 @@ $default_hash = isset($_SESSION['user_id']) ? '#dashboard' : '#login';
     </script>
     <script src="assets/js/app.js"></script>
     <script src="assets/js/weekday-picker.js"></script>
-
 </body>
 </html>

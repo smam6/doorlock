@@ -78,11 +78,16 @@ switch ($method) {
                 echo json_encode(['error' => 'ID required']);
                 exit;
             }
-            // Toggle is_active
-            $stmt = $conn->prepare("UPDATE persons SET enabele = 1  WHERE id = ?");
+            // Toggle enabled/disabled status
+            $stmt = $conn->prepare("UPDATE persons SET enabled = NOT enabled WHERE id = ?");
             $stmt->bind_param("i", $id);
             if ($stmt->execute()) {
-                echo json_encode(['success' => true]);
+                if ($stmt->affected_rows === 0) {
+                    http_response_code(404);
+                    echo json_encode(['error' => 'Person not found']);
+                } else {
+                    echo json_encode(['success' => true]);
+                }
             } else {
                 http_response_code(500);
                 echo json_encode(['error' => 'Database error']);

@@ -8,7 +8,8 @@
     let logs = [];
     let users = [];
     let schedules = []; // New state for schedules
-
+    let selectedGroupId = null;
+    
     const ARDUINO_PROXY = 'api/arduino.php';
 
     // ---------- Router ----------
@@ -35,6 +36,9 @@
             case '#schedules': // New route
                 loadSchedulesData().then(renderSchedules);
                 break;
+            case '#groups':
+               loadGroupsData().then(renderGroups);
+               break;
             default:
                 location.hash = currentUser ? '#dashboard' : '#login';
                 break;
@@ -55,10 +59,11 @@
                 <ul>
                     <li><a href="#dashboard" class="${activeRoute === '#dashboard' ? 'active' : ''}"><i>📊</i><span>داشبورد</span></a></li>
                     <li><a href="#doors" class="${activeRoute === '#doors' ? 'active' : ''}"><i>🚪</i><span>درب‌ها</span></a></li>
+                    <li><a href="#groups" class="${activeRoute === '#groups' ? 'active' : ''}"><i>🗂️</i><span>گروه‌ها</span></a></li>
                     <li><a href="#schedules" class="${activeRoute === '#schedules' ? 'active' : ''}"><i>⏰</i><span>زمان‌بندی</span></a></li>
                     <li><a href="#logs" class="${activeRoute === '#logs' ? 'active' : ''}"><i>📋</i><span>گزارشات</span></a></li>
-                    <li><a href="#users" class="${activeRoute === '#users' ? 'active' : ''}"><i>👥</i><span>کاربران</span></a></li>
-                </ul>
+                    <li><a href="#users" class="${activeRoute === '#users' ? 'active' : ''}"><i>👤</i><span>کاربران</span></a></li>
+                    </ul>
                 <button class="collapse-btn" id="collapseBtn" title="بستن منو">◀</button>
             </div>
             <div class="main-content" id="mainContent">
@@ -183,8 +188,8 @@
                         ${logs.slice(0, 5).map(log => `
                             <tr>
                                 <td>${new Date(log.access_time).toLocaleString('fa-IR')}</td>
-                                <td>${log.person_name || 'نامشخص'}</td>
-                                <td>${log.door_name || 'نامشخص'}</td>
+                                <td>${escHtml(log.person_name || 'نامشخص')}</td>
+                                <td>${escHtml(log.door_name || 'نامشخص')}</td>
                                 <td>${log.status === 'granted' ? 'مجاز' : 'غیرمجاز'}</td>
                             </tr>
                         `).join('')}
@@ -219,8 +224,8 @@
                     <tbody id="doorsTableBody">
                         ${doors.map(door => `
                             <tr data-id="${door.id}">
-                                <td>${door.name}</td>
-                                <td>${door.location || '—'}</td>
+                                <td>${escHtml(door.name)}</td>
+                                <td>${escHtml(door.location || '—')}</td>
                                 <td>${door.is_active ? 'فعال' : 'غیرفعال'}</td>
                                 <td>
                                     <button class="btn btn-sm btn-primary toggle-door" data-id="${door.id}">تغییر وضعیت</button>
@@ -352,12 +357,12 @@
                     <tbody id="usersTableBody">
                         ${users.map(user => `
                             <tr data-id="${user.id}">
-                                <td>${user.name}</td>
-                                <td>${user.card_number}</td>
+                                <td>${escHtml(user.name)}</td>
+                                <td>${escHtml(user.card_number)}</td>
                                 <td>${user.role === 'admin' ? 'مدیر' : 'کاربر'}</td>
                                 <td>${user.enabled ? 'فعال' : 'غیرفعال'}</td>
                                 <td>
-                                   <button class="btn btn-sm btn-primary update-user" onclick="toggleUserStatus(${user.id})">تغییر وضعیت</button>
+                                  <button class="btn btn-sm btn-primary update-user" data-id="${user.id}">تغییر وضعیت</button>
                                    <button class="btn btn-sm btn-danger delete-user" data-id="${user.id}">حذف</button>
                                 </td>
                             </tr>
@@ -463,35 +468,22 @@
     }
 
     function toggleUserStatus(userId) {
-        fetch('api/persons.php', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: doorId, toggle: true }),
-            credentials: 'same-origin'
-        }).then(() => {
-            loadUsersData().then(renderUsers);
-        });
+    fetch('api/persons.php', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userId, toggle: true }),
+        credentials: 'same-origin'
+    }).then(() => {
+        loadUsersData().then(renderUsers);
+    });
     }
-    async function toggleUserStatus(userId){
-        try{
-            const response = await fetch(`/api/persons/${userId}/status`,{
-                method:'PUT'
-            });  
-            const result = await response.json();  
-            if(result.success){
-                loadUsersData();
-            } 
-        }catch(err){
-            console.error("Status toggle error:",err);
-        }
-    
-    }
-    
+
+
 
     // ---------- Schedules Management ----------
     async function loadSchedulesData() {
         try {
-            const res = await fetch('api/schedules.php', { credentials: 'same-origin' });
+            const res = await fetch('api/schedules.php?type=personal', { credentials: 'same-origin' });
             const data = await res.json();
             schedules = data.schedules || [];
         } catch (e) {
@@ -513,8 +505,8 @@ function renderSchedules() {
                     <tbody id="schedulesTableBody">
                         ${schedules.map(sched => `
                             <tr data-id="${sched.id}">
-                                <td>${sched.person_name}</td>
-                                <td>${sched.door_name}</td>
+                                <td>${escHtml(sched.person_name)}</td>
+                                <td>${escHtml(sched.door_name)}</td>
                                 <td>${formatDays(sched.days)}</td>
                                 <td>${sched.start_time || '—'}</td>
                                 <td>${sched.end_time || '—'}</td>
@@ -703,6 +695,7 @@ function openAddScheduleModal() {
         }
     
         const payload = {
+              type: 'personal',
             person_id: personId,
             door_id: doorId,
             days: days,
@@ -739,7 +732,7 @@ function openAddScheduleModal() {
         fetch('api/schedules.php', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: scheduleId }),
+            body: JSON.stringify({ id: scheduleId,type:'personal' }),
             credentials: 'same-origin'
         }).then(() => {
             loadSchedulesData().then(renderSchedules);
@@ -771,8 +764,8 @@ function openAddScheduleModal() {
                         ${logs.map(log => `
                             <tr>
                                 <td>${new Date(log.access_time).toLocaleString('fa-IR')}</td>
-                                <td>${log.person_name || 'نامشخص'}</td>
-                                <td>${log.door_name || 'نامشخص'}</td>
+                                <td>${escHtml(log.person_name || 'نامشخص')}</td>
+                                <td>${escHtml(log.door_name || 'نامشخص')}</td>
                                 <td>${log.status === 'granted' ? 'مجاز' : 'غیرمجاز'}</td>
                             </tr>
                         `).join('')}
@@ -810,44 +803,292 @@ function openAddScheduleModal() {
                 router();
             });
     });
-    // backend/routes.js (or similar)
 
-// --- FIX FOR ADD DOOR ---
-app.post('/api/doors', (req, res) => {
-    // Check if the body parser correctly processed the incoming JSON
-    if (!req.body || !req.body.doorName || !req.body.location) {
-        return res.status(400).json({ message: "Missing door details." });
+// ═══════════════════════════════════════════════════════════
+//  GROUPS
+// ═══════════════════════════════════════════════════════════
+
+async function loadGroupsData() {
+    const [groupsRes, personsRes, doorsRes] = await Promise.all([
+        fetch('api/groups.php',  { credentials: 'same-origin' }),
+        fetch('api/persons.php', { credentials: 'same-origin' }),
+        fetch('api/doors.php',   { credentials: 'same-origin' })
+    ]);
+    const gData = await groupsRes.json();
+    const pData = await personsRes.json();
+    const dData = await doorsRes.json();
+    return {
+        groups:  gData.groups   || [],
+        persons: pData.persons  || [],
+        doors:   dData.doors    || []
+    };
+}
+
+function renderGroups({ groups, persons, doors }) {
+    const groupRows = groups.map(g => `
+        <tr data-id="${g.id}" class="${selectedGroupId === g.id ? 'selected-row' : ''}"
+            style="cursor:pointer">
+            <td>${escHtml(g.name)}</td>
+            <td>${escHtml(g.description || '—')}</td>
+            <td>${g.member_count}</td>
+            <td>${g.door_count}</td>
+            <td>
+                <button class="btn btn-sm btn-primary open-group-detail" data-id="${g.id}">
+                    جزئیات
+                </button>
+                <button class="btn btn-sm btn-danger delete-group" data-id="${g.id}">
+                    حذف
+                </button>
+            </td>
+        </tr>`).join('');
+
+    document.getElementById('content').innerHTML = `
+        <div style="display:flex; gap:20px; align-items:flex-start;">
+
+            <!-- ستون چپ: لیست گروه‌ها -->
+            <div style="flex:1; min-width:0;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h2 style="margin:0;">مدیریت گروه‌ها</h2>
+                    <button class="btn btn-primary" id="addGroupBtn">➕ گروه جدید</button>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>نام گروه</th>
+                                <th>توضیحات</th>
+                                <th>اعضا</th>
+                                <th>درب‌ها</th>
+                                <th>عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="groupsTableBody">
+                            ${groupRows || '<tr><td colspan="5" style="text-align:center">گروهی ثبت نشده</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ستون راست: پنل جزئیات -->
+            <div id="groupDetailPanel" style="width:340px; flex-shrink:0; display:${selectedGroupId ? 'block' : 'none'}">
+                <div class="table-container" style="padding:16px;">
+                    <div id="groupDetailContent">در حال بارگذاری...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal گروه جدید -->
+        <div class="modal-overlay" id="groupModal" style="display:none">
+            <div class="modal">
+                <h3>افزودن گروه جدید</h3>
+                <form id="addGroupForm">
+                    <div class="form-group">
+                        <input type="text" id="groupName" placeholder=" " required>
+                        <label for="groupName">نام گروه</label>
+                    </div>
+                    <div class="form-group">
+                        <input type="text" id="groupDesc" placeholder=" ">
+                        <label for="groupDesc">توضیحات (اختیاری)</label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelGroupBtn">لغو</button>
+                        <button type="submit" class="btn btn-primary">ذخیره</button>
+                    </div>
+                </form>
+            </div>
+        </div>`;
+
+    // ── Event listeners ──────────────────────────────────
+    document.getElementById('addGroupBtn')
+        .addEventListener('click', () => {
+            document.getElementById('groupModal').style.display = 'flex';
+        });
+
+    document.getElementById('cancelGroupBtn')
+        .addEventListener('click', () => {
+            document.getElementById('groupModal').style.display = 'none';
+        });
+
+    document.getElementById('addGroupForm')
+        .addEventListener('submit', async e => {
+            e.preventDefault();
+            const name = document.getElementById('groupName').value.trim();
+            const desc = document.getElementById('groupDesc').value.trim();
+            if (!name) return;
+
+            await fetch('api/groups.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ action: 'create', name, description: desc })
+            });
+
+            document.getElementById('groupModal').style.display = 'none';
+            loadGroupsData().then(renderGroups);
+        });
+
+    document.querySelectorAll('.delete-group').forEach(btn => {
+        btn.addEventListener('click', async e => {
+            const id = parseInt(e.target.dataset.id);
+            if (!confirm('این گروه حذف شود؟')) return;
+            await fetch('api/groups.php', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ action: 'delete_group', id })
+            });
+            if (selectedGroupId === id) selectedGroupId = null;
+            loadGroupsData().then(renderGroups);
+        });
+    });
+
+    document.querySelectorAll('.open-group-detail').forEach(btn => {
+        btn.addEventListener('click', e => {
+            selectedGroupId = parseInt(e.target.dataset.id);
+            document.getElementById('groupDetailPanel').style.display = 'block';
+            loadGroupDetail(selectedGroupId, persons, doors);
+        });
+    });
+
+    // اگر قبلاً گروهی انتخاب شده بود، جزئیاتش رو نگه دار
+    if (selectedGroupId) {
+        loadGroupDetail(selectedGroupId, persons, doors);
     }
-    // Logic to save door...
-    console.log(`Received new door: ${req.body.doorName}`);
-    res.status(201).json({ success: true, message: "Door added successfully." });
-});
+}
 
-// --- FIX FOR ADD USER ---
-// backend/routes/userRoutes.js (GET /api/users handler)
+// ── پنل جزئیات گروه ────────────────────────────────────────
+async function loadGroupDetail(groupId, allPersons, allDoors) {
+    const res  = await fetch(`api/groups.php?id=${groupId}`, { credentials: 'same-origin' });
+    const data = await res.json();
 
-// Assuming 'User' is your database model (Mongoose, Sequelize, etc.)
-app.get('/api/persons', async (req, res) => {
-    try {
-        const dbUsers = await User.find({}); // Retrieve all users
-
-        // CRITICAL TRANSFORMATION STEP: Map DB fields to Frontend expected fields
-        const usersForDashboard = dbUsers.map(user => ({
-            // **ACTION REQUIRED**: Verify these field names match your frontend expectations
-            rfidTag: user.tag_id || user.rfid || user._id, // FIX: Match frontend expected key
-            userName: user.name || user.username,          // FIX: Match frontend expected key
-            accessLevel: user.level || 'Standard'
-        }));
-
-        // If dbUsers was empty, usersForDashboard will be [], causing frontend to display nothing.
-        return res.status(200).json(usersForDashboard); 
-
-    } catch (error) {
-        console.error("Error fetching users:", error);
-        // If this block executes, the frontend likely sees a 500 error.
-        return res.status(200).json({ message: "Failed to retrieve user list." });
+    if (data.error) {
+        document.getElementById('groupDetailContent').innerHTML = `<p>${data.error}</p>`;
+        return;
     }
-});
+
+    const { group, members, doors } = data;
+
+    const memberIds = members.map(m => m.id);
+    const doorIds   = doors.map(d => d.id);
+
+    const personCheckboxes = allPersons.map(p => `
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px; cursor:pointer">
+            <input type="checkbox" class="member-cb" data-person-id="${p.id}"
+                ${memberIds.includes(p.id) ? 'checked' : ''}>
+            ${escHtml(p.name)}
+            <small style="color:#888">${escHtml(p.card_number || '')}</small>
+        </label>`).join('');
+
+    const doorCheckboxes = allDoors.map(d => `
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px; cursor:pointer">
+            <input type="checkbox" class="door-cb" data-door-id="${d.id}"
+                ${doorIds.includes(d.id) ? 'checked' : ''}>
+            ${escHtml(d.name)}
+            <small style="color:#888">${escHtml(d.location || '')}</small>
+        </label>`).join('');
+
+    document.getElementById('groupDetailContent').innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <strong style="font-size:1rem">${escHtml(group.name)}</strong>
+            <button class="btn btn-sm btn-secondary" id="closeDetailBtn">✕</button>
+        </div>
+        ${group.description ? `<p style="color:#666; margin-bottom:12px; font-size:.85rem">${escHtml(group.description)}</p>` : ''}
+
+        <hr style="margin-bottom:12px">
+
+        <p style="font-weight:600; margin-bottom:8px">👤 اعضا</p>
+        <div style="max-height:160px; overflow-y:auto; margin-bottom:16px;">
+            ${personCheckboxes || '<p style="color:#aaa; font-size:.85rem">شخصی ثبت نشده</p>'}
+        </div>
+
+        <p style="font-weight:600; margin-bottom:8px">🚪 درب‌های مجاز</p>
+        <div style="max-height:160px; overflow-y:auto; margin-bottom:16px;">
+            ${doorCheckboxes || '<p style="color:#aaa; font-size:.85rem">دربی ثبت نشده</p>'}
+        </div>
+
+        <button class="btn btn-primary" id="saveGroupDetailBtn" style="width:100%">💾 ذخیره تغییرات</button>`;
+
+    document.getElementById('closeDetailBtn').addEventListener('click', () => {
+        selectedGroupId = null;
+        document.getElementById('groupDetailPanel').style.display = 'none';
+    });
+
+    document.getElementById('saveGroupDetailBtn').addEventListener('click', async () => {
+        await syncGroupMembers(groupId, memberIds, allPersons);
+        await syncGroupDoors(groupId, doorIds, allDoors);
+        // رفرش لیست اصلی برای به‌روزرسانی تعداد
+        const freshData = await loadGroupsData();
+        renderGroups(freshData);
+        // پنل جزئیات رو دوباره باز کن
+        loadGroupDetail(groupId, freshData.persons, freshData.doors);
+    });
+}
+
+// ── همگام‌سازی اعضا ─────────────────────────────────────────
+async function syncGroupMembers(groupId, currentMemberIds, allPersons) {
+    const checked = [...document.querySelectorAll('.member-cb:checked')]
+        .map(cb => parseInt(cb.dataset.personId));
+
+    const toAdd    = checked.filter(id => !currentMemberIds.includes(id));
+    const toRemove = currentMemberIds.filter(id => !checked.includes(id));
+
+    await Promise.all([
+        ...toAdd.map(personId =>
+            fetch('api/groups.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ action: 'add_member', group_id: groupId, person_id: personId })
+            })
+        ),
+        ...toRemove.map(personId =>
+            fetch('api/groups.php', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ action: 'remove_member', group_id: groupId, person_id: personId })
+            })
+        )
+    ]);
+}
+
+// ── همگام‌سازی درب‌ها ────────────────────────────────────────
+async function syncGroupDoors(groupId, currentDoorIds, allDoors) {
+    const checked = [...document.querySelectorAll('.door-cb:checked')]
+        .map(cb => parseInt(cb.dataset.doorId));
+
+    const toAdd    = checked.filter(id => !currentDoorIds.includes(id));
+    const toRemove = currentDoorIds.filter(id => !checked.includes(id));
+
+    await Promise.all([
+        ...toAdd.map(doorId =>
+            fetch('api/groups.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ action: 'add_door', group_id: groupId, door_id: doorId })
+            })
+        ),
+        ...toRemove.map(doorId =>
+            fetch('api/groups.php', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ action: 'remove_door', group_id: groupId, door_id: doorId })
+            })
+        )
+    ]);
+}
+
+// ── helper: escape HTML ──────────────────────────────────────
+function escHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
 
 
 })();
