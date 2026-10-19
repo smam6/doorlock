@@ -1,0 +1,28 @@
+# Local configuration (contains credentials)
+/config/config.local.php
+
+# Runtime data
+/storage/logs/*
+/storage/tmp/*
+!/storage/logs/.gitkeep
+!/storage/tmp/.gitkeep
+
+# Local databases
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Development harness dependencies
+/tools/php-wasm/node_modules/
+/tools/php-wasm/package-lock.json
+
+# Release artifacts
+/release/
+/dist/
+*.zip
+
+# Firmware secrets and host-test build products
+/firmware/doorlock-esp8266/config.h
+/firmware/doorlock-esp8266/test/test_core
+/firmware/doorlock-esp8266/test/live_request
+*.o
