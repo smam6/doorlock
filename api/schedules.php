@@ -1,81 +1,187 @@
 <?php
-// api/schedules.php - Manage access schedules
-session_start();
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
-    exit;
-}
 
-header('Content-Type: application/json');
-require_once '../includes/config.php';
+declare(strict_types=1);
 
-$method = $_SERVER['REQUEST_METHOD'];
+define('DOORLOCK_API_REQUEST', true);
+require dirname(__DIR__) . '/includes/bootstrap.php';
 
-switch ($method) {
-    case 'GET':
-        // Retrieve all schedules with person and door names
-        $stmt = $conn->prepare("
-            SELECT s.id, s.person_id, s.door_id, s.days, s.start_time, s.end_time, s.enabled,
-                   p.name as person_name, d.name as door_name
-            FROM schedules s
-            LEFT JOIN persons p ON s.person_id = p.id
-            LEFT JOIN doors d ON s.door_id = d.id
-            ORDER BY s.id DESC
-        ");
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $schedules = $result->fetch_all(MYSQLI_ASSOC);
-        echo json_encode(['schedules' => $schedules]);
-        break;
+use DoorLock\Api;
+use DoorLock\ApiError;
+use DoorLock\ApiHelpers;
+use DoorLock\Audit;
+use DoorLock\Config;
+use DoorLock\Db;
+use DoorLock\Request;
+use DoorLock\Util;
+use DoorLock\Validator;
 
-    case 'POST':
-        // Add new schedule
-        $input = json_decode(file_get_contents('php://input'), true);
-        $person_id = $input['person_id'] ?? 0;
-        $door_id = $input['door_id'] ?? 0;
-        $days = $input['days'] ?? ''; // comma-separated day numbers (1-7)
-        $start_time = $input['start_time'] ?? '';
-        $end_time = $input['end_time'] ?? '';
-        $enabled = isset($input['enabled']) ? (int)$input['enabled'] : 1;
+Api::run(function (Request $request): array {
+    Api::guard($request, 'schedules.read', 'schedules.write');
 
-        if (!$person_id || !$door_id || !$start_time || !$end_time) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Missing required fields']);
-            exit;
+    if ($request->method() === 'GET') {
+        $id = $request->query('id');
+        if ($id !== null && $id !== '') {
+            $schedule = Db::one(
+                'SELECT s.*, p.name AS person_name, d.name AS door_name
+                   FROM schedules s
+                   JOIN persons p ON p.id = s.person_id
+                   JOIN doors d ON d.id = s.door_id
+                  WHERE s.id = ?',
+                [Validator::id($id, 'id')]
+            );
+            if ($schedule === null) {
+                throw ApiError::notFound('Schedule not found.');
+            }
+            return ['data' => ['schedule' => ApiHelpers::schedule($schedule)]];
         }
 
-        $stmt = $conn->prepare("INSERT INTO schedules (person_id, door_id, days, start_time, end_time, enabled) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("iisssi", $person_id, $door_id, $days, $start_time, $end_time, $enabled);
-        if ($stmt->execute()) {
-            echo json_encode(['success' => true, 'id' => $stmt->insert_id]);
-        } else {
-            http_response_code(500);
-            echo json_encode(['error' => 'Database error: ' . $conn->error]);
+        [$page, $perPage] = Validator::pagination($request);
+        $where = [];
+        $params = [];
+        if ($request->query('person_id') !== null && $request->query('person_id') !== '') {
+            $where[] = 's.person_id = ?';
+            $params[] = Validator::id($request->query('person_id'), 'person_id');
         }
-        $stmt->close();
-        break;
+        if ($request->query('door_id') !== null && $request->query('door_id') !== '') {
+            $where[] = 's.door_id = ?';
+            $params[] = Validator::id($request->query('door_id'), 'door_id');
+        }
+        if ($request->query('enabled') !== null) {
+            $where[] = 's.enabled = ?';
+            $params[] = Validator::boolValue($request->query('enabled'), 'enabled') ? 1 : 0;
+        }
+        $sqlWhere = $where !== [] ? ' WHERE ' . implode(' AND ', $where) : '';
+        $from = ' FROM schedules s JOIN persons p ON p.id = s.person_id JOIN doors d ON d.id = s.door_id';
+        $total = (int) Db::scalar('SELECT COUNT(*)' . $from . $sqlWhere, $params);
+        $offset = ($page - 1) * $perPage;
+        $rows = Db::all(
+            'SELECT s.*, p.name AS person_name, d.name AS door_name' . $from . $sqlWhere
+            . ' ORDER BY p.name, d.name, s.start_time, s.id LIMIT ? OFFSET ?',
+            array_merge($params, [$perPage, $offset])
+        );
+        return [
+            'data' => ['schedules' => array_map(static fn (array $row) => ApiHelpers::schedule($row), $rows)],
+            'meta' => ApiHelpers::pageMeta($page, $perPage, $total),
+        ];
+    }
 
-    case 'DELETE':
-        $input = json_decode(file_get_contents('php://input'), true);
-        $id = $input['id'] ?? 0;
-        if (!$id) {
-            http_response_code(400);
-            echo json_encode(['error' => 'ID required']);
-            exit;
-        }
-        $stmt = $conn->prepare("DELETE FROM schedules WHERE id = ?");
-        $stmt->bind_param("i", $id);
-        if ($stmt->execute()) {
-            echo json_encode(['success' => true]);
-        } else {
-            http_response_code(500);
-            echo json_encode(['error' => 'Database error']);
-        }
-        $stmt->close();
-        break;
+    if ($request->method() === 'POST') {
+        $input = $request->json();
+        $personId = Validator::id($input['person_id'] ?? null, 'person_id');
+        $doorId = Validator::id($input['door_id'] ?? null, 'door_id');
+        $person = ApiHelpers::activePerson($personId);
+        $door = ApiHelpers::activeDoor($doorId);
+        $days = Validator::days($input['days'] ?? null);
+        $start = Validator::time($input['start_time'] ?? null, 'start_time');
+        $end = Validator::time($input['end_time'] ?? null, 'end_time');
+        $enabled = array_key_exists('enabled', $input) ? Validator::boolValue($input['enabled'], 'enabled') : true;
 
-    default:
-        http_response_code(405);
-        echo json_encode(['error' => 'Method not allowed']);
-}
+        $existing = (int) Db::scalar('SELECT COUNT(*) FROM schedules WHERE person_id = ? AND door_id = ?', [$personId, $doorId]);
+        if ($existing >= Config::int('limits.max_schedules_per_pair', 50)) {
+            throw new ApiError('limit_reached', 'This person/door pair already has the maximum number of schedules.', 409);
+        }
+
+        $now = Util::toDb(Util::utcNow());
+        $scheduleId = Db::tx(function () use ($personId, $doorId, $days, $start, $end, $enabled, $now, $person, $door): int {
+            $scheduleId = Db::insert(
+                'INSERT INTO schedules (person_id, door_id, days, start_time, end_time, enabled, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [$personId, $doorId, $days, $start, $end, $enabled ? 1 : 0, $now, $now]
+            );
+            Audit::record('schedules.create', 'schedule', (string) $scheduleId, null, [
+                'person_id' => $personId,
+                'person_name' => (string) $person['name'],
+                'door_id' => $doorId,
+                'door_name' => (string) $door['name'],
+                'days' => $days,
+                'start_time' => $start,
+                'end_time' => $end,
+                'enabled' => $enabled,
+            ]);
+            return $scheduleId;
+        });
+
+        $schedule = Db::one(
+            'SELECT s.*, p.name AS person_name, d.name AS door_name FROM schedules s
+               JOIN persons p ON p.id = s.person_id JOIN doors d ON d.id = s.door_id WHERE s.id = ?',
+            [$scheduleId]
+        );
+        return ['status' => 201, 'data' => ['schedule' => ApiHelpers::schedule($schedule ?? [])]];
+    }
+
+    if ($request->method() === 'PUT') {
+        $input = $request->json();
+        $id = Validator::id($input['id'] ?? null, 'id');
+        $schedule = Db::one('SELECT * FROM schedules WHERE id = ?', [$id]);
+        if ($schedule === null) {
+            throw ApiError::notFound('Schedule not found.');
+        }
+        $changes = [];
+        $after = [];
+        if (array_key_exists('days', $input)) {
+            $changes['days'] = Validator::days($input['days']);
+            $after['days'] = $changes['days'];
+        }
+        if (array_key_exists('start_time', $input)) {
+            $changes['start_time'] = Validator::time($input['start_time'], 'start_time');
+            $after['start_time'] = $changes['start_time'];
+        }
+        if (array_key_exists('end_time', $input)) {
+            $changes['end_time'] = Validator::time($input['end_time'], 'end_time');
+            $after['end_time'] = $changes['end_time'];
+        }
+        if (array_key_exists('enabled', $input)) {
+            $changes['enabled'] = Validator::boolValue($input['enabled'], 'enabled') ? 1 : 0;
+            $after['enabled'] = (bool) $changes['enabled'];
+        }
+        if ($changes === []) {
+            throw ApiError::validation('id', 'No supported fields were supplied.');
+        }
+        $changes['updated_at'] = Util::toDb(Util::utcNow());
+        $set = [];
+        $params = [];
+        foreach ($changes as $column => $value) {
+            $set[] = $column . ' = ?';
+            $params[] = $value;
+        }
+        $params[] = $id;
+        Db::tx(function () use ($set, $params, $id, $schedule, $after): void {
+            Db::exec('UPDATE schedules SET ' . implode(', ', $set) . ' WHERE id = ?', $params);
+            Audit::record('schedules.update', 'schedule', (string) $id, [
+                'days' => (string) $schedule['days'],
+                'start_time' => (string) $schedule['start_time'],
+                'end_time' => (string) $schedule['end_time'],
+                'enabled' => (int) $schedule['enabled'] === 1,
+            ], $after);
+        });
+
+        $updated = Db::one(
+            'SELECT s.*, p.name AS person_name, d.name AS door_name FROM schedules s
+               JOIN persons p ON p.id = s.person_id JOIN doors d ON d.id = s.door_id WHERE s.id = ?',
+            [$id]
+        );
+        return ['data' => ['schedule' => ApiHelpers::schedule($updated ?? [])]];
+    }
+
+    if ($request->method() === 'DELETE') {
+        $input = $request->json();
+        $id = Validator::id($input['id'] ?? null, 'id');
+        $schedule = Db::one('SELECT * FROM schedules WHERE id = ?', [$id]);
+        if ($schedule === null) {
+            throw ApiError::notFound('Schedule not found.');
+        }
+        Db::tx(function () use ($id, $schedule): void {
+            Db::exec('DELETE FROM schedules WHERE id = ?', [$id]);
+            Audit::record('schedules.delete', 'schedule', (string) $id, [
+                'person_id' => (int) $schedule['person_id'],
+                'door_id' => (int) $schedule['door_id'],
+                'days' => (string) $schedule['days'],
+                'start_time' => (string) $schedule['start_time'],
+                'end_time' => (string) $schedule['end_time'],
+            ]);
+        });
+        return ['data' => ['deleted' => true]];
+    }
+
+    throw ApiError::methodNotAllowed();
+});

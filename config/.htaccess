@@ -1,0 +1,2 @@
+# Deny direct web access to configuration files (Apache 2.4+).
+Require all denied

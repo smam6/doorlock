@@ -1,95 +1,57 @@
 <?php
-header("Content-Type: application/json");
 
-$input = json_decode(file_get_contents("php://input"), true);
+declare(strict_types=1);
 
-if(!isset($input["card_number"]) || !isset($input["door_id"])) {
-    echo json_encode(["access"=>false]);
-    exit;
-}
+/**
+ * Device-facing access decision endpoint.
+ *
+ * Contract (also implemented by firmware/doorlock-esp8266):
+ *
+ *   POST /api/check-access.php
+ *   Headers: X-Device-Id, X-Timestamp, X-Nonce, X-Signature, X-Request-Id
+ *   Body:    {"door_id": 1, "card_number": "04AABBCC"}
+ *
+ * A policy denial is HTTP 200 with "access": false. Authentication problems
+ * are HTTP 401; missing/invalid payloads are HTTP 400; database failures are
+ * HTTP 503. Every path fails closed.
+ */
 
-$card = $input["card_number"];
-$door_id = intval($input["door_id"]);
+define('DOORLOCK_API_REQUEST', true);
+require dirname(__DIR__) . '/includes/bootstrap.php';
 
-$conn = new mysqli("localhost","root","","doorlock_db");
+use DoorLock\AccessService;
+use DoorLock\ApiError;
+use DoorLock\DeviceApi;
+use DoorLock\DeviceAuth;
+use DoorLock\Request;
+use DoorLock\Util;
 
-if($conn->connect_error){
-    echo json_encode(["access"=>false]);
-    exit;
-}
+DeviceApi::run(function (Request $request, array &$context): array {
+    if ($request->method() !== 'POST') {
+        throw ApiError::methodNotAllowed();
+    }
+    $contentType = strtolower(trim(explode(';', (string) $request->header('content-type'))[0]));
+    if ($contentType !== 'application/json') {
+        throw new ApiError('unsupported_media_type', 'Content-Type must be application/json.', 415);
+    }
 
-date_default_timezone_set("Asia/Tehran");
+    $body = $request->body();
 
-$current_time = date("H:i:s");
+    // Best-effort, untrusted context for failure logging only. It never
+    // influences the decision.
+    $decoded = json_decode($body, true);
+    if (is_array($decoded)) {
+        if (isset($decoded['door_id']) && is_int($decoded['door_id'])) {
+            $context['door_id'] = $decoded['door_id'];
+        }
+        if (isset($decoded['card_number']) && is_string($decoded['card_number'])) {
+            $context['card_number'] = Util::normalizeCardNumber($decoded['card_number']);
+        }
+    }
 
-$php_day = date('w');
+    $requestId = $request->requestId();
+    $device = DeviceAuth::authenticate($request, $body);
+    $context['device'] = $device;
 
-$day_map = [
-6 => 1,
-0 => 2,
-1 => 3,
-2 => 4,
-3 => 5,
-4 => 6,
-5 => 7
-];
-
-$current_day = $day_map[$php_day];
-
-$access = false;
-$person_id = null;
-
-/* پیدا کردن person_id */
-
-$stmt = $conn->prepare("SELECT id FROM persons WHERE card_number=? LIMIT 1");
-$stmt->bind_param("s",$card);
-$stmt->execute();
-$res = $stmt->get_result();
-
-if($row = $res->fetch_assoc()){
-    $person_id = $row["id"];
-}
-
-
-/* بررسی دسترسی */
-
-$stmt2 = $conn->prepare("
-SELECT p.id
-FROM persons p
-JOIN schedules s ON s.person_id = p.id
-WHERE p.card_number = ?
-AND p.enabled = 1
-AND s.enabled = 1
-AND s.door_id = ?
-AND FIND_IN_SET(?, s.days)
-AND ? BETWEEN s.start_time AND s.end_time
-LIMIT 1
-");
-
-$stmt2->bind_param("siis",$card,$door_id,$current_day,$current_time);
-$stmt2->execute();
-
-$result = $stmt2->get_result();
-
-if($result->num_rows > 0){
-    $access = true;
-}
-
-
-/* ثبت لاگ */
-
-$status = $access ? "granted" : "denied";
-
-$stmt3 = $conn->prepare("
-INSERT INTO access_logs (person_id,door_id,status,access_time)
-VALUES (?,?,?,NOW())
-");
-
-$stmt3->bind_param("iis",$person_id,$door_id,$status);
-$stmt3->execute();
-
-
-echo json_encode(["access"=>$access]);
-
-$conn->close();
-?>
+    return AccessService::authorize($device, $body, $requestId, $request->ip());
+});

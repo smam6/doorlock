@@ -1,0 +1,28 @@
+# DoorLock 2.0 — Apache 2.4 hardening for the application root.
+Options -Indexes
+DirectoryIndex index.php
+
+# Dotfiles (.git, .htaccess, .gitignore, …)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Never serve SQL, logs, markdown, archives or example configuration.
+<FilesMatch "\.(sql|log|md|zip|tar|gz|ini|bak|dist|example\.php)$">
+    Require all denied
+</FilesMatch>
+
+# Internal directories. Apache 2.4 syntax.
+RedirectMatch 404 ^/(config|includes|database|storage|tests|bin|tools|firmware|legacy)(/|$)
+
+# Security headers for static assets; PHP adds its own headers.
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+    Header always set X-Frame-Options "DENY"
+</IfModule>
+
+# Disable TRACE.
+RewriteEngine On
+RewriteCond %{REQUEST_METHOD} ^TRACE$
+RewriteRule .* - [F]

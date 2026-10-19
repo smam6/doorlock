@@ -1,32 +1,68 @@
 <?php
-session_start();
-header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['check'])) {
-    // Session check
-    if (isset($_SESSION['user_id'])) {
-        echo json_encode(['authenticated' => true, 'user' => ['id' => $_SESSION['user_id'], 'username' => $_SESSION['username']]]);
-    } else {
-        echo json_encode(['authenticated' => false]);
+declare(strict_types=1);
+
+define('DOORLOCK_API_REQUEST', true);
+require dirname(__DIR__) . '/includes/bootstrap.php';
+
+use DoorLock\Api;
+use DoorLock\ApiError;
+use DoorLock\Auth;
+use DoorLock\Rbac;
+use DoorLock\Request;
+use DoorLock\Security;
+use DoorLock\Util;
+use DoorLock\Validator;
+
+Api::run(function (Request $request): array {
+    if ($request->method() === 'GET') {
+        $user = Auth::user();
+        return [
+            'data' => [
+                'authenticated' => $user !== null,
+                'user' => $user !== null ? Auth::publicUser($user) : null,
+                'csrf_token' => Auth::csrfToken(),
+                'permissions' => $user !== null ? Rbac::permissionsFor((string) $user['role']) : [],
+                'server_time' => gmdate('Y-m-d\TH:i:s\Z'),
+                'site_timezone' => (string) \DoorLock\Config::get('app_timezone', 'UTC'),
+            ],
+        ];
     }
-    exit;
-}
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $username = $input['username'] ?? '';
-    $password = $input['password'] ?? '';
-
-    // Dummy authentication (replace with database check)
-    if ($username === 'admin' && $password === '1234') {
-        $_SESSION['user_id'] = 1;
-        $_SESSION['username'] = 'admin';
-        echo json_encode(['success' => true, 'user' => ['id' => 1, 'username' => 'admin']]);
-    } else {
-        echo json_encode(['success' => false, 'error' => 'نام کاربری یا رمز عبور اشتباه است']);
+    if ($request->method() !== 'POST') {
+        throw ApiError::methodNotAllowed();
     }
-    exit;
-}
 
-http_response_code(405);
-echo json_encode(['error' => 'Method not allowed']);
+    Security::requireSameOrigin($request);
+    Security::requireCsrf($request);
+    $input = $request->json();
+    $action = Validator::enum($input['action'] ?? 'login', 'action', ['login', 'logout', 'change_password']);
+
+    if ($action === 'login') {
+        $username = Validator::username($input['username'] ?? null);
+        $password = Validator::string($input['password'] ?? null, 'password', 1, 200, false);
+        $user = Auth::login($username, $password, $request->ip());
+        return [
+            'data' => [
+                'user' => $user,
+                'csrf_token' => Auth::csrfToken(),
+            ],
+        ];
+    }
+
+    if ($action === 'logout') {
+        Auth::logout();
+        return ['data' => ['logged_out' => true]];
+    }
+
+    $user = Auth::requireUser();
+    $current = Validator::string($input['current_password'] ?? null, 'current_password', 1, 200, false);
+    $new = Validator::password($input['new_password'] ?? null, (string) $user['username']);
+    Auth::changePassword($user, $current, $new);
+    return [
+        'data' => [
+            'changed' => true,
+            'csrf_token' => Security::csrfToken(),
+        ],
+    ];
+});
