@@ -186,6 +186,28 @@ Device requests are rejected over plain HTTP unless
 `security.require_https_for_admin` should stay enabled in production. The
 session cookie is `Secure` automatically when the request is HTTPS.
 
+## 6b. Controller firmware deployment
+
+1. Build and flash `firmware/doorlock-esp8266/` (see `firmware/README.md`);
+   copy `config.example.h` to `config.h` and fill in Wi-Fi, API host, door id,
+   device `unique_id`, `device_key`, pin map and a TLS trust anchor.
+2. Provision the device in the panel and paste the one-time `device_key` into
+   `config.h`. Reflash after any key rotation.
+3. Verify on the bench before mounting:
+
+   - the relay is **de-energised** at boot and after power loss;
+   - an authorised card opens the door for exactly the configured
+     `unlock_seconds`;
+   - an unknown card, a revoked card, a disabled device and a server outage
+     leave the door locked;
+   - the controller reconnects after the access point is restarted.
+
+4. Confirm NTP reachability: the controller refuses to sign requests until its
+   clock is set (the server rejects requests with more than 120 s of skew).
+5. Record the relay polarity and lock type (fail-safe/fail-secure) in the
+   installation notes. Electrical safety and egress compliance are the
+   installer's responsibility.
+
 ## 7. Scheduled maintenance
 
 Daily pruning of old logs (retention values come from `config.local.php`):

@@ -92,10 +92,13 @@ data:
 1. **No multi-factor authentication.** Administrator accounts are
    password-only. Put the panel behind a VPN or an identity-aware proxy if the
    network is untrusted.
-2. **The legacy ESP8266 firmware is not secure and not compatible.** It has
-   hardcoded Wi-Fi credentials, a blocking relay and no request signing. It is
-   quarantined under `legacy/firmware/`; a controller must be re-flashed with
-   firmware implementing `docs/api.md` before it can talk to this release.
+2. **The controller firmware has not been validated on hardware.** The
+   canonical sketch (`firmware/doorlock-esp8266/`) implements the signed
+   protocol, pins TLS, keeps the relay locked by default and is covered by host
+   tests, but it has not been compiled with the ESP8266 toolchain nor flashed
+   onto a board in this environment. Relay polarity, lock timing and electrical
+   safety must be verified by the installer before a pilot. The legacy sketches
+   under `legacy/firmware/` are insecure and must not be flashed.
 3. **A compromised web host can open doors.** Protect the server, restrict
    `config/` and `storage/`, and monitor the application log. Database-level
    deletion of audit rows is possible for the DB user; use backups or
@@ -124,5 +127,10 @@ data:
   audit, self-deactivation and logout, run against a real HTTP server.
 - A browser-simulation pass (jsdom) that logs in through the SPA and renders
   every view with live data.
+- 71 firmware assertions (SHA-256/HMAC vectors, response classification,
+  relay timing under wrap-around) compiled with ASAN and UBSAN, plus a
+  type-check of the sketch against Arduino API stubs.
+- A firmware ↔ backend protocol test that sends requests signed by the
+  firmware's own C++ code to the running PHP application (17 checks).
 - Static review of every PHP file (`tests/lint.php` parses all of them) and of
   the SQLite/MySQL schemas.

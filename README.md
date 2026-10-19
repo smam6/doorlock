@@ -18,6 +18,10 @@ is self-contained: no Composer packages, no framework and no CDN assets.
   single-use consumption and explicit revoke.
 - **HMAC-signed device API** with replay protection (nonce cache), clock-skew
   limits, per-device rate limiting and automatic key rotation.
+- **Canonical ESP8266 firmware** (`firmware/doorlock-esp8266/`): pinned TLS,
+  non-blocking relay state machine, fail-closed response validation, RC522
+  reader, watchdog-safe networking. Its security-critical parts are plain C++
+  and are unit-tested on a workstation.
 - **Role-based access control**: `admin`, `operator`, `viewer`.
 - **Session security**: HttpOnly/SameSite cookies, idle and absolute timeouts,
   session-id rotation on login, CSRF tokens and same-origin enforcement for
@@ -73,14 +77,9 @@ Point the document root at the project directory. `index.php` serves the SPA
 and `api/*.php` the JSON API. The client never talks to PHP through a second
 origin: everything is relative to `app_url`.
 
-Default demo accounts (only after `bin/seed-demo.php`):
-
-| User | Role | Password |
-| --- | --- | --- |
-| `admin` | admin | `CorrectHorseBatteryStaple9!` |
-| `operator` | operator | same |
-| `viewer` | viewer | same |
-| `disabled` | viewer | same (account disabled) |
+`bin/seed-demo.php` loads doors, people, cards, groups and a sample device;
+it never creates web users. Create the first administrator with
+`bin/create-admin.php` (or let `bin/install.php` do it).
 
 ## CLI
 
@@ -92,13 +91,16 @@ Default demo accounts (only after `bin/seed-demo.php`):
 | `php bin/seed-demo.php` | Load demo people, cards, doors, devices, schedules. |
 | `php tests/run.php` | Unit and integration tests (SQLite). |
 | `php tests/lint.php` | Parse every PHP file. |
+| `make -C firmware/doorlock-esp8266/test test` | Firmware logic tests (ASAN/UBSAN). |
+| `tests/run-all.sh` | Every suite the environment supports. |
 
 ## Directory layout
 
 ```
 api/                 JSON endpoints (one file per resource)
 assets/              CSS and ES modules for the SPA
-bin/                 CLI: install, migrate, create-admin, seed-demo
+bin/                 CLI: install, migrate, create-admin, seed-demo, prune, release
+firmware/            ESP8266 controller firmware and its host tests
 config/              config.example.php; config.local.php is generated
 database/migrations/ MySQL and SQLite schemas
 docs/                Architecture, API, deployment, security, testing
@@ -118,8 +120,9 @@ tools/php-wasm/      Development-only PHP runtime (excluded from releases)
   `allow_insecure_device_http` for an isolated lab network.
 - Rotate `app_key` only together with re-provisioning every device: device
   keys are derived from it.
-- The old ESP8266 sketches are insecure and incompatible; see
-  `firmware/README.md`.
+- Flash only `firmware/doorlock-esp8266/`. The legacy sketches are insecure
+  and incompatible. The canonical firmware still requires an ESP8266 build and
+  a hardware bench test before deployment; see `firmware/README.md`.
 
 See `docs/security.md` for the threat model and the controls that implement
 it, and `SECURITY.md` for how to report a vulnerability.

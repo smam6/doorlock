@@ -20,3 +20,9 @@
 /release/
 /dist/
 *.zip
+
+# Firmware secrets and host-test build products
+/firmware/doorlock-esp8266/config.h
+/firmware/doorlock-esp8266/test/test_core
+/firmware/doorlock-esp8266/test/live_request
+*.o

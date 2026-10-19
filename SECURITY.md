@@ -7,6 +7,10 @@
 | 2.0.x | Yes |
 | 1.x (original code in `legacy/`) | No — the legacy files are not deployed and receive no fixes |
 
+The canonical controller firmware is `firmware/doorlock-esp8266/`. It has not
+yet been compiled with the ESP8266 toolchain nor exercised on hardware in this
+environment; see `firmware/README.md` for the verification status.
+
 ## Reporting a vulnerability
 
 Please **do not** open a public issue for security problems.
@@ -53,14 +57,17 @@ Out of scope:
 
 1. The panel has no multi-factor authentication. Deploy it behind a VPN or an
    identity-aware proxy if it is reachable from untrusted networks.
-2. The legacy ESP8266 sketches are insecure and incompatible; see
-   `firmware/README.md`. A controller must be re-flashed with firmware that
-   implements the signed device API.
-3. Automated tests run against SQLite. MySQL is supported and documented, but
+2. The legacy ESP8266 sketches in `legacy/firmware/` are insecure and
+   incompatible. Use the canonical firmware in `firmware/doorlock-esp8266/`;
+   it still needs an ESP8266 build and hardware validation before a pilot.
+3. Relay polarity, lock type (fail-safe vs fail-secure) and wiring have not
+   been verified against physical hardware. Electrical and egress safety are
+   installation responsibilities; see `firmware/README.md`.
+4. Automated tests run against SQLite. MySQL is supported and documented, but
    a MySQL deployment should be smoke-tested after the first installation.
-4. Backups, TLS termination, NTP on controllers and log retention are
+5. Backups, TLS termination, NTP on controllers and log retention are
    operational responsibilities. See `docs/deployment.md`.
-5. Physical security (relay wiring, fail-safe locks, tamper switches) is
+6. Physical security (relay wiring, lock selection, tamper switches) is
    outside the software's scope.
 
 ## Security design

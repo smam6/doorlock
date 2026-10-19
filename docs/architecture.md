@@ -155,6 +155,35 @@ returns `401 replayed_request`. Bodies are limited and must be JSON with
 
 See `docs/api.md` for the full contract and reference vectors.
 
+## Controller firmware
+
+`firmware/doorlock-esp8266/` is the canonical firmware. It is split so the
+security-critical logic can be tested without hardware:
+
+```
+DoorLock.ino            Wi-Fi, TLS, RC522, relay pins, watchdog feeding
+src/doorlock_core.*     decision gate, relay timer, card debounce
+src/device_request.*    canonical string, HMAC, HTTP request builder
+src/http_response.*     bounded HTTP/1.1 parser (Content-Length, chunked)
+src/json_lite.*         allocation-free JSON field extraction
+src/sha256.*            SHA-256 and HMAC-SHA256
+```
+
+Only `DoorLock.ino` touches the Arduino API. The `src/` files are plain
+C++11 and are compiled into the host test binary as well as into the
+firmware, so the tested code is the shipped code.
+
+The controller opens the relay only for a response that is HTTP 200, JSON,
+`success: true`, exactly one boolean `access` field set to `true`, and
+`reason: "granted"`. The HTTP parser rejects conflicting lengths, unknown
+transfer codings, oversized bodies and truncated messages; the grant is
+therefore never inferred from a partial or ambiguous response.
+
+`RelayController` keeps the locked level from `begin()` (called before Wi-Fi),
+uses `millis()` arithmetic that is safe across wrap-around, clamps the pulse to
+1–30 s and re-locks on every failure path. The RFID reader and Wi-Fi stack keep
+running during the pulse because no blocking delay is used.
+
 ## Failure behaviour
 
 - Configuration errors abort the request before any output; details go to the

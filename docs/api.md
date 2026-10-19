@@ -267,24 +267,28 @@ unique_id = 0123456789abcdef0123456789abcdef
 key_version = 1
 device_key = 90b55e88d48719b10338ed254fc8a8988d7ec7234f0a9513689679bff61d6e26
 
-body      = {"door_id":1,"card_number":"04AABBCC"}
+body      = {"card_number":"04AABBCC","door_id":1}
 body_sha256 = 61b21984380594570a087c8abed7570ff3313b6ad91eec12a155bd0c9d7618b7
 
-timestamp = 1700000000
-nonce     = 0123456789abcdef0123456789abcdef
-request_id = 11111111111111111111111111111111
+timestamp = 1760000000
+nonce     = a1b2c3d4e5f60718
+request_id = req-12345678
 
 canonical =
 DOORLOCK1
 POST
 check-access
 0123456789abcdef0123456789abcdef
-1700000000
-0123456789abcdef0123456789abcdef
-11111111111111111111111111111111
+1760000000
+a1b2c3d4e5f60718
+req-12345678
 61b21984380594570a087c8abed7570ff3313b6ad91eec12a155bd0c9d7618b7
 
 signature = 8e5eae175623653c888746d38bea984e1944c36eeca518ea876ec382fb1f65d3
 ```
 
-`tests/unit/device_auth_test.php` recomputes this vector independently.
+The same vector (including the SHA-256 of the canonical string,
+`91dbccb3925ec80be5c729b3b17d35f9567d2ea1b47ca35c4ba7dfbc280660ea`) is
+recomputed independently by `tests/unit/device_auth_test.php` (PHP) and by
+`firmware/test/test_core.cpp` (C++), so the firmware and the server are proven
+to agree on the wire format.

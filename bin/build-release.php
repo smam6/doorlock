@@ -36,7 +36,6 @@ $excludedDirectories = [
     'release',
     'dist',
     'legacy',
-    'tests',
     'tools',
     'storage/logs',
     'storage/tmp',
@@ -45,7 +44,9 @@ $excludedDirectories = [
 $excludedFiles = [
     '.gitignore',
     'config/config.local.php',
-    'config/config.example.php.bak',
+    'firmware/doorlock-esp8266/config.h',
+    'firmware/doorlock-esp8266/test/test_core',
+    'firmware/doorlock-esp8266/test/live_request',
 ];
 
 $skipFile = static function (string $relative) use ($excludedFiles): bool {
@@ -57,6 +58,7 @@ $skipFile = static function (string $relative) use ($excludedFiles): bool {
         || str_ends_with($name, '.sqlite-wal')
         || str_ends_with($name, '.sqlite-shm')
         || str_ends_with($name, '.zip')
+        || str_ends_with($name, '.o')
         || $name === '.DS_Store';
 };
 
