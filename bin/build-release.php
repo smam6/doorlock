@@ -37,6 +37,7 @@ if (!str_starts_with($output, '/')) {
 
 $excludedDirectories = [
     '.git',
+    '.github',
     'release',
     'dist',
     'legacy',
