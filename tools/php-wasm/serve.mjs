@@ -70,8 +70,7 @@ const MIME = {
     '.json': 'application/json; charset=utf-8',
 };
 
-function serveStatic(req, res, pathname) {
-    const decoded = decodeURIComponent(pathname);
+function serveStatic(req, res, decoded) {
     const target = path.resolve(documentRoot, '.' + decoded);
     if (target !== documentRoot && !target.startsWith(documentRoot + path.sep)) {
         res.writeHead(403, { 'Content-Type': 'text/plain' });
@@ -101,7 +100,27 @@ function serveStatic(req, res, pathname) {
     return true;
 }
 
-const DENIED_PREFIXES = ['/config/', '/includes/', '/database/', '/storage/', '/tests/', '/bin/', '/tools/', '/.git/', '/firmware/', '/legacy/'];
+const DENIED_PREFIXES = ['/docs/', '/config/', '/includes/', '/database/', '/storage/', '/tests/', '/bin/', '/tools/', '/.git/', '/firmware/', '/legacy/'];
+
+/**
+ * Only the SPA entry point, PHP endpoints and files with a known MIME type may
+ * reach a handler. Everything else (markdown, headers, dotfiles, archives,
+ * configuration snippets) is answered with 404, so the development server
+ * cannot expose repository metadata or documentation.
+ */
+function isAllowedPath(decodedPath) {
+    if (decodedPath === '/' || decodedPath.endsWith('/')) {
+        return true; // directory request, mapped to index.php below
+    }
+    const name = decodedPath.slice(decodedPath.lastIndexOf('/') + 1);
+    if (name.startsWith('.') || name.startsWith('_')) {
+        return false;
+    }
+    if (name.toLowerCase().endsWith('.php')) {
+        return true;
+    }
+    return Object.prototype.hasOwnProperty.call(MIME, path.extname(name).toLowerCase());
+}
 
 /** @type {PHPRequestHandler|null} */
 let phpRequestHandler = null;
@@ -109,17 +128,31 @@ let phpRequestHandler = null;
 async function handleRequest(req, res) {
     const parsed = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = parsed.pathname;
+    let decodedPath;
+    try {
+        decodedPath = decodeURIComponent(pathname);
+    } catch {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Bad Request');
+        return;
+    }
 
-    if (DENIED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    if (DENIED_PREFIXES.some((prefix) => decodedPath.startsWith(prefix))) {
         res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Not Found');
         return;
     }
 
     if (req.method === 'GET' || req.method === 'HEAD') {
-        if (serveStatic(req, res, pathname)) {
+        if (serveStatic(req, res, decodedPath)) {
             return;
         }
+    }
+
+    if (!isAllowedPath(decodedPath)) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Not Found');
+        return;
     }
 
     const chunks = [];
