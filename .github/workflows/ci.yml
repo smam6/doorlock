@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: PHP lint and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: pdo_sqlite, sqlite3, mbstring, json
+          coverage: none
+
+      - name: Lint PHP sources
+        run: php tests/lint.php
+
+      - name: Unit and integration tests
+        run: php tests/run.php
+
+  firmware-host:
+    name: Firmware host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run the portable core under ASan/UBSan
+        run: make -C firmware/doorlock-esp8266/test test
+
+  sketch-typecheck:
+    name: Sketch typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile the sketch against the host stubs
+        run: firmware/doorlock-esp8266/test/build_sketch.sh
+
+  esp8266-build:
+    # BLOCKED: ESP8266 toolchain unavailable in this environment. Do not report as PASS.
+    if: false
+    name: ESP8266 firmware build (blocked)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report blocked status
+        run: |
+          echo 'BLOCKED: ESP8266 toolchain unavailable in this environment. Do not report as PASS.'
+          exit 1
