@@ -137,3 +137,13 @@ it, and `SECURITY.md` for how to report a vulnerability.
 - [`docs/security.md`](docs/security.md) — threat model and audit notes.
 - [`docs/testing.md`](docs/testing.md) — how to run the suites and what they
   cover.
+
+## Licence
+
+This project is proprietary software. Copyright (c) 2026 seyed mohammad amin
+mosavi. All rights reserved. See [`LICENSE`](LICENSE) for the full terms.
+
+The source code is publicly visible on GitHub for transparency and review
+purposes only. It is **not** open source. No use, modification, distribution,
+sublicensing, or commercial exploitation is permitted without prior written
+permission from the copyright holder.

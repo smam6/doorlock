@@ -104,13 +104,17 @@ What that means:
 
 ## Licensing
 
+This is proprietary software; see `LICENSE` at the repository root. No use,
+modification, distribution, sublicensing or commercial exploitation is
+permitted without prior written permission from the copyright holder.
+
 The application has no third-party runtime dependencies (no Composer
 packages, no CDN assets). Development-only dependencies:
 
-- `@php-wasm/node` (MIT) — only in `tools/php-wasm/`, excluded from releases;
-- MFRC522 Arduino library (LGPL-2.1) — linked into the firmware if used; review
-  LGPL obligations before distributing binaries;
-- ESP8266 Arduino core (LGPL-2.1) — same consideration.
-
-The project itself ships without an explicit license file; add the license
-chosen by the owner before distributing it commercially.
+- `@php-wasm/node` and the transitive `@php-wasm/*` packages
+  (GPL-2.0-or-later) — only in `tools/php-wasm/`, excluded from release
+  archives;
+- MFRC522 Arduino library (Unlicense, public domain) — installed separately
+  with `arduino-cli`, not vendored in this repository;
+- ESP8266 Arduino core (LGPL-2.1) — the platform the firmware is built
+  against, not vendored.
