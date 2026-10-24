@@ -1,5 +1,10 @@
 # Deployment
 
+This software is proprietary and is distributed under the terms in `LICENSE`.
+Redistribution of the source, of this application's files or of firmware
+binaries outside the copyright holder is prohibited without prior written
+permission. Confirm that you are authorised to deploy before continuing.
+
 ## 1. Server prerequisites
 
 - PHP 8.1+ (tested on 8.4) with PHP-FPM and: `pdo_mysql`, `mbstring`,

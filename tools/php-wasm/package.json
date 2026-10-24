@@ -1,6 +1,7 @@
 {
   "name": "doorlock-php-wasm-tools",
   "private": true,
+  "license": "UNLICENSED",
   "description": "Development-only PHP runtime and HTTP server used for automated tests and the local preview. Not shipped in release archives.",
   "type": "module",
   "dependencies": {
