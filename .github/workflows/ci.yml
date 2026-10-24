@@ -47,6 +47,12 @@ jobs:
       - name: Compile the sketch against the host stubs
         run: firmware/doorlock-esp8266/test/build_sketch.sh
 
+  # TO ENABLE THIS JOB:
+  # 1. Pin esp8266:esp8266@3.1.2 and MFRC522@1.4.11 in the workflow.
+  # 2. Provide config.h (non-secret placeholders) in a CI step.
+  # 3. Remove `if: false`.
+  # 4. Verify the job passes on a test PR before merging.
+  # Until then this job must remain skipped, never reported as PASS.
   esp8266-build:
     # BLOCKED: ESP8266 toolchain unavailable in this environment. Do not report as PASS.
     if: false
